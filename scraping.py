@@ -74,8 +74,8 @@ except FileExistsError:
 driver = webdriver.Chrome()
 
 # Don't forget to enter your login credentials here
-email = "ishaanjain1507@gmail.com"
-password = "Sj@55888"
+email = "chsuryasaketh@gmail.com"
+password = "Alumnnet"
 login(driver, email, password)
 
 time.sleep(5)
