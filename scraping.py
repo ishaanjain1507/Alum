@@ -1,5 +1,7 @@
 import re
 import time
+import json
+import os
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -63,12 +65,17 @@ def scroll(driver_name):
         if round(end - start) > 15:
             break
 
+try:
+    os.system('mkdir ./Objects/')
+    print("Folder \'Objects\' created")
+except FileExistsError:
+    print("Folder exists")
 
 driver = webdriver.Chrome()
 
 # Don't forget to enter your login credentials here
-email = "enter your mail id here"
-password = "Enter your password here"
+email = "ishaanjain1507@gmail.com"
+password = "Sj@55888"
 login(driver, email, password)
 
 time.sleep(5)
@@ -159,4 +166,17 @@ for experienc in experiences:
     duration2 = re.split(' - | · ', duration2)
     data.extend(duration2)
     jobs.append(data)
+
+obj = {
+    "Name" : name,
+    "Company" : works_at,
+    "Location" : location,
+    "Contact Info" : contact_url,
+    "Jobs" : jobs
+}
+
 print(jobs)
+
+
+with open('./Objects/' + name + ".json", 'w') as file:
+    json.dump(obj, file)
