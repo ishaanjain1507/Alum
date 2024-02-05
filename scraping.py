@@ -113,7 +113,7 @@ contact_url += contact
 print("Name -->", name,
       "\nWorks At -->", works_at,
       "\nLocation -->", location,
-      "\nContact info -->", contact_url)
+      "\nLinkedIn profile -->", profile_url)
 
 time.sleep(5)
 
@@ -171,7 +171,7 @@ obj = {
     "Name" : name,
     "Company" : works_at,
     "Location" : location,
-    "Contact Info" : contact_url,
+    "LinkedIn profile" : profile_url,
     "Jobs" : jobs
 }
 
