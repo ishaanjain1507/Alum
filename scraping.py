@@ -1,8 +1,5 @@
 import re
 import time
-import json
-import os
-
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -10,173 +7,144 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
 
-# Code defining the login function for the scraper
-def login(driver_name, email_value, password_value, timeout=10):
-    driver_name.get("https://www.linkedin.com/login")
-    WebDriverWait(driver_name, 10).until(EC.presence_of_element_located((By.ID, "username")))
+class LinkedInScrapper:
+    def __init__(self, email, password):
+        self.driver = webdriver.Chrome()
+        self.email = email
+        self.password = password
 
-    email_elem = driver_name.find_element(By.ID, "username")
-    email_elem.send_keys(email_value)
+    def login(self, timeout=10):
+        self.driver.get('https://www.linkedin.com/login')
+        WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.ID, 'username')))
 
-    password_elem = driver_name.find_element(By.ID, "password")
-    password_elem.send_keys(password_value)
-    password_elem.submit()
+        email_elem = self.driver.find_element(By.ID, 'username')
+        email_elem.send_keys(self.email)
 
-    if driver_name.current_url.startswith('https://www.linkedin.com/checkpoint/challenge/'):
-        verification_code_input = driver_name.find_element(By.ID, "input__email_verification_pin")
-        # Prompt the user to enter the verification code
-        verification_code = input("Please enter the 2-step verification code: ")
+        password_elem = self.driver.find_element(By.ID, 'password')
+        password_elem.send_keys(self.password)
 
-        # Enter the verification code into the input field
-        verification_code_input.send_keys(verification_code)
-        verification_code_input.submit()  # Or use other appropriate actions to submit the code
+        password_elem.submit()
 
-    WebDriverWait(driver_name, timeout).until(
-        EC.presence_of_element_located((By.CLASS_NAME, "global-nav__primary-link")))
+        if self.driver.current_url.startswith('https://www.linkedin.com/checkpoint/challenge/'):
+            verification_code_input = self.driver.find_element(By.ID, 'input__email_verification_pin')
+            verification_code = input('Please enter the 2-step verification code: ')
+            verification_code_input.send_keys(verification_code)
+            verification_code_input.submit()
 
+        WebDriverWait(self.driver, timeout).until(
+            EC.presence_of_element_located((By.CLASS_NAME, 'global-nav__primary-link')))
 
-def scroll(driver_name):
-    time.sleep(5)
+    def scroll(self):
 
-    start = time.time()
+        SCROLL_PAUSE_TIME = 2
+        final_scroll = self.driver.execute_script('return document.body.scrollHeight')
+        initial_scroll = 0
+        self.driver.execute_script(f'window.scrollTo({initial_scroll}, {final_scroll});')
+        time.sleep(SCROLL_PAUSE_TIME)
 
-    # will be used in the while loop
-    initial_value = 0
-    final_scroll = 1000
+    def basic_info(self, profile):
+        self.driver.get(profile)
+        page = self.driver.page_source
+        basic = BeautifulSoup(page, 'html.parser').find('div', {'class': 'mt2 relative'})
+        name_elem = basic.find('h1')
+        name = name_elem.get_text().strip()
 
-    while True:
-        driver_name.execute_script(f"window.scrollTo({initial_value}, {final_scroll});")
-        # this command scrolls the window starting from
-        # the pixel value stored in the initial_value
-        # variable to the pixel value stored at the
-        # final_scroll variable
-        initial_value = final_scroll
-        final_scroll += 1000
+        bio_elem = basic.find('div', {'class': 'text-body-medium break-words'})
+        bio = bio_elem.get_text().strip()
 
-        # we will stop the script for 5 seconds so that
-        # the data can load
-        time.sleep(5)
-        # You can change it as per your needs and internet speed
+        location_elem = basic.find_all('span', {'class': 'text-body-small inline t-black--light break-words'})
+        location = location_elem[0].get_text().strip()
 
-        end = time.time()
+        contact_elem = basic.find('a', {'id': 'top-card-text-details-contact-info'})
+        contact = contact_elem.get("href")
+        contact_url = "https://www.linkedin.com" + contact
+        return name, bio, location, contact_url
 
-        # We will scroll for 15 seconds.
-        # You can change it as per your needs and internet speed
-        if round(end - start) > 15:
-            break
+    def contact(self, contact_url):
+        contacts = []
+        self.driver.get(contact_url)
+        self.scroll()
+        page = self.driver.page_source
+        info = BeautifulSoup(page, 'html.parser').find('div', {'class': 'pv-profile-section__section-info section-info'})
+        profile_elem = info.find_all('section', {'class': 'pv-contact-info__contact-type'})
 
-try:
-    os.system('mkdir ./Objects/')
-    print("Folder \'Objects\' created")
-except FileExistsError:
-    print("Folder exists")
+        for profile in profile_elem[1:]:
+            all_a_tags = profile.find_all('a')
+            href_links = [tag.get('href') for tag in all_a_tags if tag.get('href')]
+            # h3_tag = profile.find('h3', class_='pv-contact-info__header t-16 t-black t-bold')
+            # if h3_tag and h3_tag.text.strip() == 'Email':
+            #     mail = href_links
+            # if h3_tag and h3_tag.text.strip() == 'Phone':
+            #     span_tag = profile.find('span', class_='t-14 t-black t-normal')
+            #     if span_tag:
+            #         phone = span_tag.text.strip()
+            contacts.append(href_links)
+        return contacts
 
-driver = webdriver.Chrome()
+    def experience(self, experience_url):
+        jobs = []
+        self.driver.get(experience_url)
+        self.scroll()
+        page = self.driver.page_source
+        experiences = BeautifulSoup(page, 'html.parser').find_all("li", {"class": 'pvs-list__paged-list-item '
+                                                                                  'artdeco-list__item '
+                                                                                  'pvs-list__item--line-separated '
+                                                                                  'pvs-list__item--one-column'})
+        for experience in experiences:
+            data = []
+            title = experience.find('div', {'class': 'display-flex flex-wrap align-items-center full-height'})
+            if title:
+                title2 = title.find('span', {'aria-hidden': 'true'}).get_text().strip()
+                data.append(title2)
+                company = experience.find('span', {'class': 't-14 t-normal'})
+                company2 = company.find('span', {'aria-hidden': 'true'}).get_text().strip()
+                data.append(company2)
+                duration = experience.find('span', {'class': 't-14 t-normal t-black--light'})
+                duration2 = duration.find('span', {'aria-hidden': 'true'}).get_text().strip('.')
+                duration2 = re.split(' - | · ', duration2)
+                data.extend(duration2)
+                jobs.append(data)
+        return jobs
 
-# Don't forget to enter your login credentials here
-email = "chsuryasaketh@gmail.com"
-password = "Alumnnet"
-login(driver, email, password)
+    def education(self, education_url):
+        institutes = []
+        self.driver.get(education_url)
+        self.scroll()
+        page = self.driver.page_source
+        educations = BeautifulSoup(page, 'html.parser').find_all('a', {
+            'class': 'optional-action-target-wrapper display-flex flex-column '
+                     'full-width'})
+        for education in educations:
+            inst = []
+            institute = education.find_all('span', {'aria-hidden': 'true'})
+            for span in institute:
+                spans = span.text.split(' - ')
+                inst.extend(spans)
+            institutes.append(inst)
+        return institutes
 
-time.sleep(5)
+    def scrape(self, profile_url):
 
-# paste the URL of Kunal's profile here
-# Url for testing
-profile_url = "https://www.linkedin.com/in/kunalshah1/"
+        name, bio, location, contact_url = self.basic_info(profile_url)
 
-# this will open the link
-driver.get(profile_url)
+        contact = self.contact(contact_url)
 
-src = driver.page_source
+        experience_url = profile_url + 'details/experience/'
+        jobs = self.experience(experience_url)
 
-# Now using beautiful soup
-soup = BeautifulSoup(src, 'html.parser')
+        education_url = profile_url + 'details/education'
+        institutes = self.education(education_url)
 
-# Extracting the HTML of the complete introduction box
-intro = soup.find('div', {'class': 'mt2 relative'})
+        # print(f"{name}\n{bio}\n{location}\n{contact_url}\n{contact}\n{jobs}\n{institutes}")
+        return name, bio, location, contact_url, contact, jobs, institutes
 
-name_loc = intro.find("h1")
-name = name_loc.get_text().strip() if name_loc else "Name not found"
-
-works_at_loc = intro.find("div", {'class': 'text-body-medium break-words'})
-works_at = works_at_loc.get_text().strip() if works_at_loc else "Works at not found"
-
-location_loc = intro.find_all("span", {'class': 'text-body-small inline t-black--light break-words'})
-location = location_loc[0].get_text().strip() if location_loc else "Location not found"
-
-a_tag = soup.find('a', {'id': 'top-card-text-details-contact-info'})
-print(a_tag)
-contact = a_tag.get("href") if a_tag else "Contact info not found"
-contact_url = "https://www.linkedin.com"
-contact_url += contact
-
-print("Name -->", name,
-      "\nWorks At -->", works_at,
-      "\nLocation -->", location,
-      "\nLinkedIn profile -->", profile_url)
-
-time.sleep(5)
-
-driver.get(contact_url)
-
-src2 = driver.page_source
-
-# Now using beautiful soup
-soup2 = BeautifulSoup(src2, 'html.parser')
-info = soup2.find('div', {'class': 'pv-profile-section__section-info section-info'})
-profile_loc = info.find_all("section", {'class': 'pv-contact-info__contact-type'})
-# Not finding info about the profile link as already present
-for loc in profile_loc[1:]:
-    all_a_tags = loc.find_all('a')
-    href_links = [tag.get('href') for tag in all_a_tags if tag.get('href')]
-    h3_tag = loc.find('h3', class_='pv-contact-info__header t-16 t-black t-bold')
-    if h3_tag and h3_tag.text.strip() == 'Email':
-        email = href_links
-        print(f"email: {email}\n")
-    if h3_tag and h3_tag.text.strip() == 'Phone':
-        span_tag = loc.find('span', class_='t-14 t-black t-normal')
-        if span_tag:
-            phone = span_tag.text.strip()
-            print(f"Phone: {phone}\n")
-    print(href_links)
-experience_url = profile_url + "details/experience/"
-# this will open the link
-driver.get(experience_url)
-scroll(driver)
-src3 = driver.page_source
-
-# Now using beautiful soup
-soup3 = BeautifulSoup(src3, 'html.parser')
-experience = soup3.find("div", {"class": "scaffold-finite-scroll__content"})
-# print(experience)
-jobs = []
-experiences = experience.find_all("li", {
-    "class": "pvs-list__paged-list-item artdeco-list__item pvs-list__item--line-separated pvs-list__item--one-column"})
-for experienc in experiences:
-    data = []
-    title = experienc.find("div", {"class": "display-flex flex-wrap align-items-center full-height"})
-    title2 = title.find("span", {"aria-hidden": "true"}).get_text().strip()
-    #     print(title2)
-    data.append(title2)
-    company = experienc.find("span", {"class": "t-14 t-normal"})
-    company2 = company.find("span", {"aria-hidden": "true"}).get_text().strip()
-    data.append(company2)
-    duration = experienc.find("span", {"class": "t-14 t-normal t-black--light"})
-    duration2 = duration.find("span", {"aria-hidden": "true"}).get_text().strip('.')
-    duration2 = re.split(' - | · ', duration2)
-    data.extend(duration2)
-    jobs.append(data)
-
-obj = {
-    "Name" : name,
-    "Company" : works_at,
-    "Location" : location,
-    "LinkedIn profile" : profile_url,
-    "Jobs" : jobs
-}
-
-print(jobs)
+    def quit(self):
+        self.driver.quit()
 
 
-with open('./Objects/' + name + ".json", 'w') as file:
-    json.dump(obj, file)
+# mail = "chsuryasaketh@gmail.com"
+# key = "Alumnnet"
+# scraper = LinkedInScrapper(mail, key)
+# scraper.login()
+# scraper.scrape("https://www.linkedin.com/in/kunalshah1/")
+# scraper.quit()
