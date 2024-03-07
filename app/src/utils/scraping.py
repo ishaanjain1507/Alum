@@ -1,5 +1,11 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import re
 import time
+import requests
+import os
+import google.generativeai as genai
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -12,6 +18,13 @@ class LinkedInScrapper:
         self.driver = webdriver.Chrome()
         self.email = email
         self.password = password
+        self.api_key = os.getenv("GOOGLE_API_KEY")
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel("gemini-pro")
+        
+    def get_gemini_response(self, bio):
+        response = self.model.generate_content(bio)
+        return response.text
 
     def login(self, timeout=10):
         self.driver.get('https://www.linkedin.com/login')
@@ -123,28 +136,31 @@ class LinkedInScrapper:
             institutes.append(inst)
         return institutes
 
-    def scrape(self, profile_url):
 
+    def scrape(self, profile_url):
         name, bio, location, contact_url = self.basic_info(profile_url)
+        
+        # Update bio using Gemini API
+        updated_bio = self.get_gemini_response(bio)
 
         contact = self.contact(contact_url)
-
         experience_url = profile_url + 'details/experience/'
         jobs = self.experience(experience_url)
-
         education_url = profile_url + 'details/education'
         institutes = self.education(education_url)
 
-        # print(f"{name}\n{bio}\n{location}\n{contact_url}\n{contact}\n{jobs}\n{institutes}")
-        return name, bio, location, contact_url, contact, jobs, institutes
+        return name, updated_bio, location, contact_url, contact, jobs, institutes
 
     def quit(self):
         self.driver.quit()
+        
+        
+links = ["https://www.linkedin.com/in/kunalshah1/", "https://www.linkedin.com/in/balmykhol/",
+         "https://www.linkedin.com/in/kunalshah/"]
 
-
-# mail = "chsuryasaketh@gmail.com"
-# key = "Alumnnet"
-# scraper = LinkedInScrapper(mail, key)
-# scraper.login()
-# scraper.scrape("https://www.linkedin.com/in/kunalshah1/")
-# scraper.quit()
+mail = "chsuryasaketh@gmail.com"
+key = "Alumnnet"
+scraper = LinkedInScrapper(mail, key)
+scraper.login()
+scraper.scrape("https://www.linkedin.com/in/kunalshah1/")
+scraper.quit()
