@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import re
@@ -21,7 +22,7 @@ class LinkedInScrapper:
         self.api_key = os.getenv("GOOGLE_API_KEY")
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel("gemini-pro")
-        
+
     def get_gemini_response(self, bio):
         response = self.model.generate_content(bio)
         return response.text
@@ -78,7 +79,8 @@ class LinkedInScrapper:
         self.driver.get(contact_url)
         self.scroll()
         page = self.driver.page_source
-        info = BeautifulSoup(page, 'html.parser').find('div', {'class': 'pv-profile-section__section-info section-info'})
+        info = BeautifulSoup(page, 'html.parser').find('div',
+                                                       {'class': 'pv-profile-section__section-info section-info'})
         profile_elem = info.find_all('section', {'class': 'pv-contact-info__contact-type'})
 
         for profile in profile_elem[1:]:
@@ -124,7 +126,8 @@ class LinkedInScrapper:
         self.driver.get(education_url)
         self.scroll()
         page = self.driver.page_source
-        educations = BeautifulSoup(page, 'html.parser').find_all('a', {
+        educations = BeautifulSoup(page, 'html.parser').find('div', {'class': 'scaffold-finite-scroll__content'})
+        educations = educations.find_all('a', {
             'class': 'optional-action-target-wrapper display-flex flex-column '
                      'full-width'})
         for education in educations:
@@ -136,13 +139,12 @@ class LinkedInScrapper:
             institutes.append(inst)
         return institutes
 
-
     def scrape(self, profile_url):
         name, bio, location, contact_url = self.basic_info(profile_url)
-        
+
         # Update bio using Gemini API
         updated_bio = self.get_gemini_response(bio)
-
+        # updated_bio = bio
         contact = self.contact(contact_url)
         experience_url = profile_url + 'details/experience/'
         jobs = self.experience(experience_url)
@@ -153,14 +155,17 @@ class LinkedInScrapper:
 
     def quit(self):
         self.driver.quit()
-        
-        
-links = ["https://www.linkedin.com/in/kunalshah1/", "https://www.linkedin.com/in/balmykhol/",
-         "https://www.linkedin.com/in/kunalshah/"]
 
-mail = "chsuryasaketh@gmail.com"
-key = "Alumnnet"
-scraper = LinkedInScrapper(mail, key)
-scraper.login()
-scraper.scrape("https://www.linkedin.com/in/kunalshah1/")
-scraper.quit()
+if __name__ == "__main__":
+    links = ["https://www.linkedin.com/in/kunalshah1/", "https://www.linkedin.com/in/balmykhol/",
+         "https://www.linkedin.com/in/prajwaldeep-kamble-850792225/"]
+
+    mail = "chsuryasaketh@gmail.com"
+    key = "Alumnnet"
+    scraper = LinkedInScrapper(mail, key)
+    scraper.login()
+    name, updated_bio, location, contact_url, contact, jobs, institutes = scraper.scrape(
+        "https://www.linkedin.com/in/prajwaldeep-kamble-850792225/")
+    print(jobs)
+    print(institutes)
+    scraper.quit()
