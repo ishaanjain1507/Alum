@@ -13,7 +13,7 @@ key = "Alumnnet"
 scraper = scrap.LinkedInScrapper(mail, key)
 scraper.login()
 # links = data['linked in profile url']
-con = psy.connect(host="localhost", database="alumn", user="postgres", password="1656", port=5432)
+con = psy.connect(host="localhost", database="alumn", user="postgres", password="replace with database password", port=5432)
 cur = con.cursor()
 
 cur.execute("""create table if not exists profile(
