@@ -17,7 +17,7 @@ AlumNet is designed to build and maintain a comprehensive database of alumni. Th
 
 ## Inspiration
 
-The inspiration behind this project stems from the belief that students greatly benefit from connecting with their alumni. Whether seeking advice on further studies, job recommendations, or finding mentors for our in-house grown clubs, having a robust alumni network can significantly enhance the student experience and career prospects.
+The inspiration behind this project stems from the belief that students greatly benefit from connecting with their alumni. Whether seeking advice on further studies, job recommendations, or finding mentors for our in-house grown clubs, having a robust alumni network can significantly enhance the student experience and career prospects. Additionally, to encourage more alumni to volunteer, we collect their LinkedIn profiles. Filling out professional career details can be long and time-consuming, and since this information is likely already available on their LinkedIn profiles, the project includes a scraping component to streamline data collection.
 
 ## Features
 
