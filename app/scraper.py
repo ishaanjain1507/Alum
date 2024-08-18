@@ -1,7 +1,6 @@
 import os
 import re
 import time
-import json
 import logging
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
@@ -10,8 +9,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 import google.generativeai as genai
+from db import collection
 
 # Load environment variables
 load_dotenv()
@@ -37,25 +36,24 @@ class AlumniProfile:
             'contact': self.contact,
             'jobs': [
                 {
-                    'title': job[0],
-                    'company': job[1],
-                    'start_date': job[2],
-                    'end_date': job[3],
-                    'duration': job[4]
+                    'title': job[0] if len(job) > 0 else "Unknown",
+                    'company': job[1] if len(job) > 1 else "Unknown",
+                    'start_date': job[2] if len(job) > 2 else "Unknown",
+                    'end_date': job[3] if len(job) > 3 else "Unknown",
+                    'duration': job[4] if len(job) > 4 else "Unknown"
                 }
                 for job in self.jobs
             ],
             'institutes': [
                 {
-                    'name': institute[0],
-                    'degree': institute[1],
-                    'start_year': institute[2],
-                    'end_year': institute[3]
+                    'name': institute[0] if len(institute) > 0 else "Unknown",
+                    'degree': institute[1] if len(institute) > 1 else "Unknown",
+                    'start_year': institute[2] if len(institute) > 2 else "Unknown",
+                    'end_year': institute[3] if len(institute) > 3 else "Unknown"
                 }
                 for institute in self.institutes
             ]
         }
-
 
 
 class LinkedInScrapper:
@@ -136,25 +134,55 @@ class LinkedInScrapper:
             return "Unknown", "Unknown", "Unknown", None
 
     def contact(self, contact_url):
-        contacts = []
+        contacts = {
+            "email": None,
+            "phone_number": None,
+            "other": []
+        }
+        
         if not contact_url:
             return contacts
-
+        
         try:
             self.driver.get(contact_url)
             self.scroll()
             page = self.driver.page_source
-            info = BeautifulSoup(page, 'html.parser').find('div',
-                                                           {'class': 'pv-profile-section__section-info section-info'})
-            profile_elem = info.find_all('section', {'class': 'pv-contact-info__contact-type'})
-
-            for profile in profile_elem[1:]:
-                all_a_tags = profile.find_all('a')
-                href_links = [tag.get('href') for tag in all_a_tags if tag.get('href')]
-                contacts.append(href_links)
+            soup = BeautifulSoup(page, 'html.parser')
+            
+            # Attempt to fetch email and phone number
+            contact_sections = soup.find_all('section', {'class': 'pv-contact-info__contact-type'})
+            
+            for section in contact_sections:
+                contact_type = section.find('h3', {'class': 'pv-contact-info__header'})
+                if contact_type:
+                    label = contact_type.get_text().strip().lower()
+                    contact_info = section.find_all('a', href=True)
+                    
+                    if label == 'email':
+                        for link in contact_info:
+                            if 'mailto:' in link['href']:
+                                contacts['email'] = link['href'].replace('mailto:', '').strip()
+                    
+                    elif label == 'phone':
+                        for link in contact_info:
+                            if re.match(r'\d{10,}', link.get_text().strip()):  # Adjust regex as needed
+                                contacts['phone_number'] = link.get_text().strip()
+                    
+                    else:
+                        # Add other contact types if necessary
+                        for link in contact_info:
+                            contacts['other'].append({
+                                'label': label,
+                                'url': link['href']
+                            })
+                        
         except Exception as e:
             logging.error(f"Error fetching contact info: {e}")
+        
         return contacts
+
+
+
 
     def experience(self, experience_url):
         jobs = []
@@ -191,16 +219,19 @@ class LinkedInScrapper:
             self.scroll()
             page = self.driver.page_source
             educations = BeautifulSoup(page, 'html.parser').find('div', {'class': 'scaffold-finite-scroll__content'})
-            educations = educations.find_all('a', {
-                'class': 'optional-action-target-wrapper display-flex flex-column '
-                         'full-width'})
-            for education in educations:
-                inst = []
-                institute = education.find_all('span', {'aria-hidden': 'true'})
-                for span in institute:
-                    spans = span.text.split(' - ')
-                    inst.extend(spans)
-                institutes.append(inst)
+            if educations:
+                educations = educations.find_all('a', {
+                    'class': 'optional-action-target-wrapper display-flex flex-column '
+                             'full-width'})
+                for education in educations:
+                    inst = []
+                    institute = education.find_all('span', {'aria-hidden': 'true'})
+                    for span in institute:
+                        spans = span.text.split(' - ')
+                        inst.extend(spans)
+                    institutes.append(inst)
+            else:
+                logging.error("No education section found")
         except Exception as e:
             logging.error(f"Error fetching education: {e}")
         return institutes
@@ -220,44 +251,34 @@ class LinkedInScrapper:
         profile = AlumniProfile(name, updated_bio, location, contact_url, contact, jobs, institutes)
     
         return profile
-    
+
+    def save_to_mongo(self, profile):
+        try:
+            profile_dict = profile.to_dict()
+            collection.insert_one(profile_dict)
+            logging.info("Profile saved to MongoDB")
+        except Exception as e:
+            logging.error(f"Error saving profile to MongoDB: {e}")
+
     def quit(self):
         self.driver.quit()
-
-
-
 
 def scrape_profiles(links):
     with ThreadPoolExecutor(max_workers=5) as executor:
         results = list(executor.map(scraper.scrape, links))
     return results
 
-
-def export_to_json(profiles, directory='./Objects/'):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    
-    for i, profile in enumerate(profiles):
-        file_path = os.path.join(directory, f'profile_{i + 1}.json')
-        with open(file_path, 'w') as f:
-            json.dump(profile.to_dict(), f, indent=4)
-        logging.info(f"Exported profile {i + 1} to {file_path}")
-
-
 if __name__ == "__main__":
-    links = ["https://www.linkedin.com/in/prajwaldeep-kamble-850792225/"]
+    links = ["https://www.linkedin.com/in/ishaan-jain-148775214/"]
 
     mail = "chsuryasaketh@gmail.com"
     key = "Alumnnet"
     scraper = LinkedInScrapper(mail, key)
     scraper.login()
     profiles = scrape_profiles(links)
-    
-    # Export the profiles to JSON files
-    export_to_json(profiles)
-    
+
+    # Save profiles to MongoDB
     for profile in profiles:
-        print(profile.jobs)
-        print(profile.institutes)
-    
+        scraper.save_to_mongo(profile)
+
     scraper.quit()
