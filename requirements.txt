@@ -1,8 +1,8 @@
-streamlit~=1.31.1
+beautifulsoup4
+selenium
+python-dotenv
 google-generativeai
-python-dotenv~=1.0.1
-selenium~=4.17.2
-beautifulsoup4~=4.12.3
-psycopg2~=2.9.9
-pandas~=2.2.0
-bs4~=0.0.2
+python-dotenv 
+pymongo
+fastapi
+uvicorn
