@@ -10,7 +10,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from concurrent.futures import ThreadPoolExecutor
 import google.generativeai as genai
+
 from db import collection
+from constants import MAIL, PASSWORD
 
 # Load environment variables
 load_dotenv()
@@ -108,6 +110,52 @@ class LinkedInScrapper:
         self.driver.execute_script(f'window.scrollTo({initial_scroll}, {final_scroll});')
         time.sleep(SCROLL_PAUSE_TIME)
 
+    def fetch_and_save_profiles(self):
+        connection_links = set()
+        try:
+            self.driver.get('https://www.linkedin.com/mynetwork/invite-connect/connections/')
+            WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'mn-connections')))
+            
+            while True:
+                self.scroll()
+                time.sleep(2)  # Wait for the content to load
+                
+                page = self.driver.page_source
+                soup = BeautifulSoup(page, 'html.parser')
+
+                # Extract profile links
+                links = set()
+                for link in soup.find_all('a', href=True):
+                    href = link['href']
+                    if '/in/' in href:
+                        links.add(f"https://www.linkedin.com{href}")
+
+                # Process and save each profile
+                for profile_url in links:
+                    try:
+                        profile = self.scrape(profile_url)
+                        self.save_to_mongo(profile)
+                    except Exception as e:
+                        logging.error(f"Error processing profile {profile_url}: {e}")
+
+                # Click "Load more" if it exists
+                try:
+                    load_more_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Show more')]")
+                    if load_more_button:
+                        load_more_button.click()
+                        time.sleep(3)  # Wait for new profiles to load
+                    else:
+                        break
+                except Exception as e:
+                    logging.info("No more connections to load or error occurred.")
+                    break
+
+        except Exception as e:
+            logging.error(f"Error fetching connection links: {e}")
+
+        logging.info(f"Total profiles processed: {len(connection_links)}")
+
+
     def basic_info(self, profile):
         try:
             self.driver.get(profile)
@@ -141,14 +189,21 @@ class LinkedInScrapper:
         }
         
         if not contact_url:
+            logging.warning("No contact URL found.")
             return contacts
         
         try:
             self.driver.get(contact_url)
-            self.scroll()
+            self.scroll()  # Ensure the page is fully loaded
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, 'pv-contact-info__contact-type')))
+            
             page = self.driver.page_source
             soup = BeautifulSoup(page, 'html.parser')
             
+            # Log the entire HTML for the contact section for debugging purposes
+            logging.info(f"Contact page HTML: {soup.prettify()}")
+
             # Attempt to fetch email and phone number
             contact_sections = soup.find_all('section', {'class': 'pv-contact-info__contact-type'})
             
@@ -162,26 +217,32 @@ class LinkedInScrapper:
                         for link in contact_info:
                             if 'mailto:' in link['href']:
                                 contacts['email'] = link['href'].replace('mailto:', '').strip()
+                                logging.info(f"Found email: {contacts['email']}")
                     
                     elif label == 'phone':
-                        for link in contact_info:
-                            if re.match(r'\d{10,}', link.get_text().strip()):  # Adjust regex as needed
-                                contacts['phone_number'] = link.get_text().strip()
+                        phone_info = section.find('span', {'class': 't-14 t-black t-normal'})
+                        if phone_info:
+                            contacts['phone_number'] = phone_info.get_text().strip()
+                            logging.info(f"Found phone number: {contacts['phone_number']}")
                     
                     else:
-                        # Add other contact types if necessary
+                        # Log and save other contact information
                         for link in contact_info:
                             contacts['other'].append({
                                 'label': label,
                                 'url': link['href']
                             })
+                        logging.info(f"Found other contact info: {contacts['other']}")
                         
         except Exception as e:
             logging.error(f"Error fetching contact info: {e}")
         
+        if not contacts['email']:
+            logging.warning("Email not found in the contact info.")
+        if not contacts['phone_number']:
+            logging.warning("Phone number not found in the contact info.")
+        
         return contacts
-
-
 
 
     def experience(self, experience_url):
@@ -269,16 +330,10 @@ def scrape_profiles(links):
     return results
 
 if __name__ == "__main__":
-    links = ["https://www.linkedin.com/in/ishaan-jain-148775214/"]
-
-    mail = "chsuryasaketh@gmail.com"
-    key = "Alumnnet"
+    mail = MAIL
+    key = PASSWORD
     scraper = LinkedInScrapper(mail, key)
     scraper.login()
-    profiles = scrape_profiles(links)
-
-    # Save profiles to MongoDB
-    for profile in profiles:
-        scraper.save_to_mongo(profile)
-
+    scraper.fetch_and_save_profiles()
     scraper.quit()
+
